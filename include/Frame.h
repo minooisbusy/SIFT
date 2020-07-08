@@ -10,6 +10,7 @@ namespace FEATURES
 {
 template<typename ... Args>
 std::string string_format(const std::string& format, Args ... args);
+double sigma_compute(double, double);
 class Frame 
 {
 private:
@@ -23,6 +24,7 @@ private:
     uint32 n_octaves;
     cv::Size sz_kernel;
     double sigma;
+    //double *arr_sigma; /parallel method
     //Methods
     
 public:

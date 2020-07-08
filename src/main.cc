@@ -23,4 +23,5 @@ int main(int argc, char* argv[])
     FEATURES::Frame f(d.next());
     //f.showImage("test");
     f.make_candidates();
+    f.find_ScaleExtrema(0);
 }
