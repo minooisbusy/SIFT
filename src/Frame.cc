@@ -36,8 +36,21 @@ bool Frame::readImage(std::string filename)
 Frame::Frame(){};
 Frame::Frame(std::string filename, int n_octave, int n_scale):scales(nullptr),n_scales(n_scale), n_octaves(n_octave) 
 { 
-    sigma = 1.f;
+    sigma = 1.6f;
+    Extrema = new std::vector<cv::Point2f>[n_octaves];
 
+    // Dynamically allocation: octave-scale
+    scales = new Mat*[n_octaves];
+    for(uint32 i=0; i<n_octaves; i++)
+    {
+        scales[i] = new Mat[n_scales];
+    }
+    // Dynamically allocation: octave-dog
+    dog = new Mat*[n_octaves];
+    for(uint32 i=0; i<n_octaves; i++)
+    {
+        dog[i] = new Mat[n_scales-1];
+    }
     //Parallel cases
     /*
     arr_sigma = new double[n_scales];
@@ -61,6 +74,8 @@ Frame::~Frame()
     if(arr_sigma !=nullptr)
         delete [] arr_sigma;
     */
+    if(Extrema !=nullptr)
+        delete [] Extrema;
     if(scales != nullptr)
     {
         std::cout<<"Dynamic array dealloc:scale"<<std::endl;
@@ -87,57 +102,50 @@ void Frame::showImage(std::string winname)
 }
 void Frame::make_candidates(bool verbose)
 {
-    // Dynamically allocation: octave-scale
-    scales = new Mat*[n_octaves];
-    for(uint32 i=0; i<n_octaves; i++)
-    {
-        scales[i] = new Mat[n_scales];
-    }
-    // Dynamically allocation: octave-dog
-    dog = new Mat*[n_octaves];
-    for(uint32 i=0; i<n_octaves; i++)
-    {
-        dog[i] = new Mat[n_scales-1];
-    }
 
-    sz_kernel = Size(5,5);
+    sz_kernel = Size(0,0);
     const double k_divide = 2.0;
     double legacy_sigma=0;
-
-
+    double sigma_scale = this->sigma;
     // First scale in first octave is original
-    scales[0][0] = gray.clone();
-    //cv::GaussianBlur(gray,
-    //                scales[0][0],
-    //                sz_kernel,
-    //                sigma_scale,
-    //                sigma_scale);
+    //scales[0][0] = gray.clone();
+    cv::GaussianBlur(gray,
+                    scales[0][0],
+                    sz_kernel,
+                    sigma_scale,
+                    sigma_scale);
     
     double k = pow(2.0f,1.0/(n_scales-1));
-    double sigma_scale = this->sigma;
     for(uint32 octave=0; octave<n_octaves; octave++)
     {
+            if(verbose)
+            {
+            std::cout<<"\t\t scale:"<<0<<", total sigma="<<legacy_sigma<<", cur sigma="<<sigma_scale<<std::endl;
+            }
         for(uint32 scale=0; scale<n_scales-1; scale++)
         {
-            std::cout<<"\t\t scale:"<<scale<<", total sigma="<<legacy_sigma<<", cur sigma="<<sigma_scale<<std::endl;
                 cv::GaussianBlur(scales[octave][0],
                                  scales[octave][scale+1],
                                  sz_kernel,
                                  sigma_scale, //TODO
                                  sigma_scale);
             sigma_scale *=k;
+            if(verbose)
+            {
             legacy_sigma = sigma_compute(legacy_sigma, sigma_scale);
+            std::cout<<"\t\t scale:"<<scale+1<<", total sigma="<<legacy_sigma<<", cur sigma="<<sigma_scale<<std::endl;
+            }
         }
-            std::cout<<"\t\t scale:"<<4<<", total sigma="<<legacy_sigma<<", cur sigma="<<sigma_scale<<std::endl;
 
         //Next octave before last octave
         if( octave < n_octaves-1)
         {
-            std::cout<<"\t\t next"<<std::endl;
-                cv::resize(scales[octave][n_scales-1],
-                           scales[octave+1][0],
-                           Size(int(scales[octave][n_scales-1].cols/k_divide), 
-                                int(scales[octave][n_scales-1].rows/k_divide)));
+            if(verbose)
+                std::cout<<"\t\t next"<<std::endl;
+            cv::resize(scales[octave][n_scales-3],
+                       scales[octave+1][0],
+                       Size(int(scales[octave][n_scales-1].cols/k_divide), 
+                            int(scales[octave][n_scales-1].rows/k_divide)));
         }
     }
     for(uint32 octave=0; octave<n_octaves; octave++)
@@ -145,6 +153,7 @@ void Frame::make_candidates(bool verbose)
         for(uint32 scale=0; scale<n_scales-1; scale++)
         {
             dog[octave][scale] = scales[octave][scale+1] - scales[octave][scale];
+            //std::cout<<string_format("Size of dog[%d][%d], height = %d, width= %d",octave,scale, dog[octave][scale].rows, dog[octave][scale].cols)<<std::endl;
         }
     }
     
@@ -164,8 +173,13 @@ void Frame::make_candidates(bool verbose)
         {
             for(uint32 scale=0; scale<n_scales-1; scale++)
             {
+                double min, max;
+                cv::minMaxLoc(dog[octave][scale],&min,&max);
+                Mat normalized = ((dog[octave][scale]-min)/(max-min));
+                normalized.convertTo(normalized,CV_8U, 255,0);
                 String name = string_format("octave:%d, scale:%d-%d", octave, scale+1, scale); 
-                imshow(name, dog[octave][scale]);
+                //imshow(name, dog[octave][scale]);
+                imshow(name, normalized);
             }
                 waitKey(0);
                 cv::destroyAllWindows();
@@ -173,11 +187,8 @@ void Frame::make_candidates(bool verbose)
     }
 
     // 4. Accurate Keypoint localization
-    
-
-
 }
-void Frame::find_ScaleExtrema(int octave)
+void Frame::find_ScaleExtrema(int octave, bool verbose)
 {
     std::cout<<"Start Local Extrema Detection"<<std::endl;
     //const Mat &src = dd
@@ -185,16 +196,17 @@ void Frame::find_ScaleExtrema(int octave)
     Size sz = dog[octave][0].size();
     std::cout<<sz<<std::endl;
     Point location;
-    double neighbor[26];
+    double neighbor[27];
+   // std::vector<cv::Point2f> Extrema;
     
     for(unsigned int x=1; x<sz.height-1; x++)
     {
         //top
         for(uint32 y=1; y<sz.width-1; y++)
         {
+            if(verbose)
             std::cout<<"center = ("<<x<<", "<<y<<")"<<std::endl;
-            std::cout<<"n_scales="<<n_scales<<std::endl;
-            for(uint32 idx_dog=0; idx_dog<n_scales-2; idx_dog++) // select base ...?
+            for(uint32 idx_dog=0; idx_dog<n_scales-3; idx_dog++) // select base ...?
             {
                 for(unsigned int scale=idx_dog; scale<idx_dog+3;scale++)// Selected relative 3 scales
                 {
@@ -202,17 +214,76 @@ void Frame::find_ScaleExtrema(int octave)
                     {
                         for(int dy=-1; dy<2; dy++)
                         {
-                            int idx = 2+x+y+9*(scale-idx_dog);
-                            neighbor[idx] = dog[octave][scale].at<float>(y,x);
-                            string_format("octave = %d, scale = %d, idx = %d \n",octave, scale, idx);
+                            int idx = (1+dx)*3+(1+dy)+9*(scale-idx_dog);
+                            neighbor[idx] = abs(dog[octave][scale].at<float>(x+dx,y+dy));
+                            if(verbose)
+                            std::cout<<string_format("octave = %d, scale = %d, layer = %d, idx = %d, (%d,%d), value = %lf",octave, scale,idx_dog, idx,dx,dy,neighbor[idx])<<std::endl;
                         }
                     }
-                    return;
+                }
+
+                // max값이 13번째이면 append
+                bool bExtrema = false;
+                for(int i=0;i<27;i++)
+                {
+                    if(neighbor[13]>0)
+                    {
+                        if(neighbor[13]>=neighbor[i])
+                        {
+                            bExtrema=true;
+                        }
+                        else
+                        {
+                            bExtrema=false;
+                            break;
+                        }
+                    }
+                    else if(neighbor[13]<0)
+                    {
+                        if(neighbor[13]<=neighbor[i])
+                        {
+                            bExtrema=true;
+                        }
+                        else
+                        {
+                            bExtrema=false;
+                            break;
+                        }
+                    }
+                }
+                if(bExtrema)
+                {
+                    Extrema[octave].push_back(Point(y,x));
+                    //std::cout<<string_format("Point(%d,%d) is extrema",x,y)<<std::endl;
+                }
+                else
+                {
+                    if(verbose)
+                    std::cout<<string_format("Point(%d,%d) is NOT extrema",x,y)<<std::endl;
                 }
             }
         }
     }
-        
+    std::cout<<"octave:"<<octave<<", #candiates="<<Extrema[octave].size()<<std::endl;
+}
+void Frame::showCands(int octave)
+{
+    Mat shows =scales[octave][0].clone();
+    cv::cvtColor(shows,shows,COLOR_GRAY2RGB);
+    for(int i=0; i<Extrema[octave].size(); i++)
+        cv::circle(shows, Extrema[octave][i], 5, Scalar(0,0,255), 1);
+    imshow("cands", shows);
+    waitKey(0);
+    destroyAllWindows();
+}
+void Frame::process(bool verbose)
+{
+    make_candidates(verbose);
+    for(int i=0;i<n_octaves; i++)
+    {
+        find_ScaleExtrema(i, verbose);
+    }
+    showCands();
 }
 
 }

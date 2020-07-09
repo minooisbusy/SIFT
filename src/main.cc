@@ -20,8 +20,13 @@ int main(int argc, char* argv[])
         std::cout<<"Error exists: directory is not valid"<<std::endl;
         return 0;
     }
+    bool verbose = std::strcmp(argv[3], "true")==0?true:false;
     FEATURES::Frame f(d.next());
-    //f.showImage("test");
-    f.make_candidates();
-    f.find_ScaleExtrema(0);
+    
+    f.make_candidates(verbose);
+    for(int i=0; i<4;i++)
+    {
+        f.find_ScaleExtrema(i, verbose);
+        f.showCands(i);
+    }
 }

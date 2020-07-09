@@ -23,6 +23,7 @@ private:
     uint32 n_scales;
     uint32 n_octaves;
     cv::Size sz_kernel;
+    std::vector<cv::Point2f> *Extrema;
     double sigma;
     //double *arr_sigma; /parallel method
     //Methods
@@ -32,9 +33,11 @@ public:
     Frame(std::string filename, int n_octave=4, int n_scale=5);
     void const getImage();
     bool readImage(std::string filename);
-    void showImage(std::string winname);
     void make_candidates(bool verbose = false);
-    void find_ScaleExtrema(int octave);
+    void find_ScaleExtrema(int octave, bool verbose=false);
+    void showImage(std::string winname);
+    void showCands(int octave=0);
+    void process(bool verbose=false);
     ~Frame();
     
 };

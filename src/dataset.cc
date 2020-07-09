@@ -61,6 +61,7 @@ Dataset::Dataset(char* _base, char* _scene):base(_base), scene(_scene)
 // Methods
 std::string Dataset::next()
 {
+    cout<<filenames[count]<<endl;
     std::string res = filenames[count];
     count +=1;
     return res;
