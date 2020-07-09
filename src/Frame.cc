@@ -103,7 +103,7 @@ void Frame::showImage(std::string winname)
 void Frame::make_candidates(bool verbose)
 {
 
-    sz_kernel = Size(0,0);
+    sz_kernel = Size(0,0);//Arbitrary size by sigma magnitude.
     const double k_divide = 2.0;
     double legacy_sigma=0;
     double sigma_scale = this->sigma;
@@ -115,21 +115,22 @@ void Frame::make_candidates(bool verbose)
                     sigma_scale,
                     sigma_scale);
     
-    double k = pow(2.0f,1.0/(n_scales-1));
+    double k = sqrt(2);//pow(2.0f,1.0/(n_scales-1));
     for(uint32 octave=0; octave<n_octaves; octave++)
     {
             if(verbose)
             {
             std::cout<<"\t\t scale:"<<0<<", total sigma="<<legacy_sigma<<", cur sigma="<<sigma_scale<<std::endl;
             }
+        sigma_scale = this->sigma;
         for(uint32 scale=0; scale<n_scales-1; scale++)
         {
-                cv::GaussianBlur(scales[octave][0],
+                cv::GaussianBlur(scales[octave][scale],
                                  scales[octave][scale+1],
                                  sz_kernel,
                                  sigma_scale, //TODO
                                  sigma_scale);
-            sigma_scale *=k;
+            sigma_scale =pow(k,scale)*sigma_scale;
             if(verbose)
             {
             legacy_sigma = sigma_compute(legacy_sigma, sigma_scale);
@@ -144,8 +145,8 @@ void Frame::make_candidates(bool verbose)
                 std::cout<<"\t\t next"<<std::endl;
             cv::resize(scales[octave][n_scales-3],
                        scales[octave+1][0],
-                       Size(int(scales[octave][n_scales-1].cols/k_divide), 
-                            int(scales[octave][n_scales-1].rows/k_divide)));
+                       Size(int(scales[octave][n_scales-1].cols/k_divide+1), 
+                            int(scales[octave][n_scales-1].rows/k_divide+1)));
         }
     }
     for(uint32 octave=0; octave<n_octaves; octave++)
@@ -221,8 +222,6 @@ void Frame::find_ScaleExtrema(int octave, bool verbose)
                         }
                     }
                 }
-
-                // max값이 13번째이면 append
                 bool bExtrema = false;
                 for(int i=0;i<27;i++)
                 {
@@ -271,7 +270,7 @@ void Frame::showCands(int octave)
     Mat shows =scales[octave][0].clone();
     cv::cvtColor(shows,shows,COLOR_GRAY2RGB);
     for(int i=0; i<Extrema[octave].size(); i++)
-        cv::circle(shows, Extrema[octave][i], 5, Scalar(0,0,255), 1);
+        cv::circle(shows, Extrema[octave][i], 3, Scalar(0,0,255), 1);
     imshow("cands", shows);
     waitKey(0);
     destroyAllWindows();
@@ -283,7 +282,70 @@ void Frame::process(bool verbose)
     {
         find_ScaleExtrema(i, verbose);
     }
-    showCands();
 }
+// getValue
+float Frame::getValue(const Mat& src, const int x, const int y)
+{
+    return src.at<float>(x, y);
+}
+
+
+//Derivatives
+Point3f Frame::foDerivative(int octave, int scale, Point2f p)
+{
+    assert(scale>1);
+    assert(p.x>=1||p.y>=1);
+    const float dx = getValue(dog[octave][scale],p.x-1, p.y)
+                    -getValue(dog[octave][scale],p.x+1, p.y);
+
+    const float dy = getValue(dog[octave][scale],p.x, p.y-1)
+                    -getValue(dog[octave][scale],p.x, p.y+1);
+
+    const float ds = getValue(dog[octave][scale-1],p.x, p.y)
+                    -getValue(dog[octave][scale+1],p.x, p.y);
+    return Point3f(dx,dy,ds);
+}
+Mat Frame::soDerivative(int octave, int scale, Point2f p)
+{
+    assert(scale>1);
+    assert(p.x>=1||p.y>=1);
+
+    const float dxx = getValue(dog[octave][scale],p.x-1, p.y)
+                     +getValue(dog[octave][scale],p.x+1, p.y)
+                     -2*getValue(dog[octave][scale],p.x, p.y);
+
+    const float dyy = getValue(dog[octave][scale],p.x, p.y-1)
+                     +getValue(dog[octave][scale],p.x, p.y+1)
+                     -2*getValue(dog[octave][scale],p.x, p.y);
+
+    const float dss = getValue(dog[octave][scale-1],p.x, p.y)
+                     +getValue(dog[octave][scale+1],p.x, p.y)
+                     -2*getValue(dog[octave][scale],p.x, p.y);
+
+    const float dxy = (getValue(dog[octave][scale],p.x+1, p.y+1)
+                      +getValue(dog[octave][scale],p.x-1, p.y+1)
+                      +getValue(dog[octave][scale],p.x+1, p.y-1)
+                      -getValue(dog[octave][scale],p.x-1, p.y-1))/2.0;
+
+    const float dxs =(getValue(dog[octave][scale+1],p.x+1, p.y)
+                     +getValue(dog[octave][scale+1],p.x-1, p.y)
+                     +getValue(dog[octave][scale-1],p.x+1, p.y)
+                     -getValue(dog[octave][scale-1],p.x-1, p.y))/2.0;
+
+    const float dys =(getValue(dog[octave][scale+1],p.x, p.y+1)
+                     -getValue(dog[octave][scale+1],p.x, p.y+1)
+                     +getValue(dog[octave][scale-1],p.x, p.y+1)
+                     -getValue(dog[octave][scale-1],p.x, p.y-1))/2.0;
+    Mat result = Mat::zeros(3,3,CV_32F);
+    result.at<float>(0,0) = dxx;
+    result.at<float>(0,1) = dxy;
+    result.at<float>(0,2) = dxs;
+    result.at<float>(1,0) = dxy;
+    result.at<float>(1,1) = dyy;
+    result.at<float>(1,2) = dys;
+    result.at<float>(2,0) = dxs;
+    result.at<float>(2,1) = dys;
+    result.at<float>(2,2) = dss;
+    return result;
 
 }

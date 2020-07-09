@@ -4,6 +4,7 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <string>
+#include <cassert>
 
 using namespace cv;
 namespace FEATURES
@@ -40,6 +41,11 @@ public:
     void process(bool verbose=false);
     ~Frame();
     
+    ///Derivatives
+    Point3f foDerivative(int octave, int scale, Point2f p);
+    Mat soDerivative(int octave, int scale, Point2f p);
+    float getValue(const Mat& src, const int x, const int y);
+            
 };
 }
 
