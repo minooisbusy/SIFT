@@ -305,6 +305,7 @@ Point3f Frame::foDerivative(int octave, int scale, Point2f p)
                     -getValue(dog[octave][scale+1],p.x, p.y);
     return Point3f(dx,dy,ds);
 }
+//Reference site: https://github.com/snowiow/SIFT
 Mat Frame::soDerivative(int octave, int scale, Point2f p)
 {
     assert(scale>1);
@@ -333,7 +334,7 @@ Mat Frame::soDerivative(int octave, int scale, Point2f p)
                      -getValue(dog[octave][scale-1],p.x-1, p.y))/2.0;
 
     const float dys =(getValue(dog[octave][scale+1],p.x, p.y+1)
-                     -getValue(dog[octave][scale+1],p.x, p.y+1)
+                     +getValue(dog[octave][scale+1],p.x, p.y-1)
                      +getValue(dog[octave][scale-1],p.x, p.y+1)
                      -getValue(dog[octave][scale-1],p.x, p.y-1))/2.0;
     Mat result = Mat::zeros(3,3,CV_32F);
@@ -347,5 +348,6 @@ Mat Frame::soDerivative(int octave, int scale, Point2f p)
     result.at<float>(2,1) = dys;
     result.at<float>(2,2) = dss;
     return result;
+}
 
 }
