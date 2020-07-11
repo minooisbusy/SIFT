@@ -25,24 +25,33 @@ private:
     uint32 n_octaves;
     cv::Size sz_kernel;
     std::vector<cv::Point2f> *Extrema;
+    std::vector<cv::Point2f> keyPoints;
     double sigma;
+
+    bool verbose;
     //double *arr_sigma; /parallel method
     //Methods
     
 public:
     Frame();
-    Frame(std::string filename, int n_octave=4, int n_scale=5);
+    Frame(std::string filename, bool verbose=false, int n_octave=4, int n_scale=5);
+
+    // I/O methods
     void const getImage();
     bool readImage(std::string filename);
-    void make_candidates(bool verbose = false);
-    void find_ScaleExtrema(int octave, bool verbose=false);
     void showImage(std::string winname);
     void showCands(int octave=0);
+
+    // Proccessing
+    void make_candidates(bool verbose = false);
+    void find_ScaleExtrema(int octave, bool verbose=false);
+    void keypoint_Localization();
+
     void process(bool verbose=false);
     ~Frame();
     
     ///Derivatives
-    Point3f foDerivative(int octave, int scale, Point2f p);
+    Mat foDerivative(int octave, int scale, Point2f p);
     Mat soDerivative(int octave, int scale, Point2f p);
     float getValue(const Mat& src, const int x, const int y);
             

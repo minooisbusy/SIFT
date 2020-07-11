@@ -19,7 +19,7 @@ find_package(OpenCV REQUIRED)
 include_directories(
 ${PROJECT_SOURCE_DIR}
 "/usr/include/eigen3"
-"/usr/local/include/opencv4"
+#"/usr/local/include/opencv4"
 )
 message(STATUS ${OpenCV})
 

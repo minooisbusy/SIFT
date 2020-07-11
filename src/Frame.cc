@@ -34,7 +34,7 @@ bool Frame::readImage(std::string filename)
     return 0;
 };
 Frame::Frame(){};
-Frame::Frame(std::string filename, int n_octave, int n_scale):scales(nullptr),n_scales(n_scale), n_octaves(n_octave) 
+Frame::Frame(std::string filename, bool verbose, int n_octave, int n_scale):scales(nullptr),n_scales(n_scale), n_octaves(n_octave) 
 { 
     sigma = 1.6f;
     Extrema = new std::vector<cv::Point2f>[n_octaves];
@@ -180,7 +180,6 @@ void Frame::make_candidates(bool verbose)
                 normalized.convertTo(normalized,CV_8U, 255,0);
                 String name = string_format("octave:%d, scale:%d-%d", octave, scale+1, scale); 
                 //imshow(name, dog[octave][scale]);
-                imshow(name, normalized);
             }
                 waitKey(0);
                 cv::destroyAllWindows();
@@ -265,6 +264,27 @@ void Frame::find_ScaleExtrema(int octave, bool verbose)
     }
     std::cout<<"octave:"<<octave<<", #candiates="<<Extrema[octave].size()<<std::endl;
 }
+
+void Frame::keypoint_Localization()
+{
+    int scale = 1;
+    for(unsigned int octave=1; octave<n_octaves-1; octave++)
+    {
+	for(int idx=0; idx<Extrema[octave].size();idx++)
+	{
+		    //Ax=b
+		    Mat A = soDerivative(octave,scale, Extrema[octave][idx]);
+		    Mat b = -foDerivative(octave,scale, Extrema[octave][idx]);
+		    Mat x = Mat::zeros(3,1,CV_32F);
+		    cv::solve(A, b, x);
+		    std::cout<<"x="<<Extrema[octave][idx]<<", x_hat="<<x<<std::endl;
+		    return;
+		    if(getValue(x,0,0) >0.5 |getValue(x,1,0) >0.5 |getValue(x,2,0) >0.5)
+			continue;
+	}
+    }
+}
+
 void Frame::showCands(int octave)
 {
     Mat shows =scales[octave][0].clone();
@@ -291,10 +311,11 @@ float Frame::getValue(const Mat& src, const int x, const int y)
 
 
 //Derivatives
-Point3f Frame::foDerivative(int octave, int scale, Point2f p)
+Mat Frame::foDerivative(int octave, int scale, Point2f p)
 {
-    assert(scale>1);
+    assert(scale>=1);
     assert(p.x>=1||p.y>=1);
+    Mat result=Mat::zeros(3,1,CV_32F);
     const float dx = getValue(dog[octave][scale],p.x-1, p.y)
                     -getValue(dog[octave][scale],p.x+1, p.y);
 
@@ -303,12 +324,16 @@ Point3f Frame::foDerivative(int octave, int scale, Point2f p)
 
     const float ds = getValue(dog[octave][scale-1],p.x, p.y)
                     -getValue(dog[octave][scale+1],p.x, p.y);
-    return Point3f(dx,dy,ds);
+    result.at<float>(0,0)=dx;
+    result.at<float>(1,0)=dy;
+    result.at<float>(2,0)=ds;
+
+    return result;
 }
 //Reference site: https://github.com/snowiow/SIFT
 Mat Frame::soDerivative(int octave, int scale, Point2f p)
 {
-    assert(scale>1);
+    assert(scale>=1);
     assert(p.x>=1||p.y>=1);
 
     const float dxx = getValue(dog[octave][scale],p.x-1, p.y)

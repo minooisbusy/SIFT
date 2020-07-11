@@ -21,12 +21,19 @@ int main(int argc, char* argv[])
         return 0;
     }
     bool verbose = std::strcmp(argv[3], "true")==0?true:false;
-    FEATURES::Frame f(d.next());
+    FEATURES::Frame f(d.next(), true);
     
+    // 1st step: Find corner candidates
     f.make_candidates(verbose);
+
+    // 2nd step: Local Extrema Detection
     for(int i=0; i<4;i++)
     {
         f.find_ScaleExtrema(i, verbose);
-        f.showCands(i);
+        //f.showCands(i);
     }
+    
+    // 3rd step: Accurate Keypoint localization
+    f.keypoint_Localization();
+    
 }
